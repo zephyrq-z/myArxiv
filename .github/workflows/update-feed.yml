@@ -24,7 +24,8 @@ jobs:
         env:
           GITHUB_PAT: ${{ github.token }}
           REPO: "NotCraft/ArxivFeed"
-          VERSION: "latest"
+          # Pin the release: "latest" silently changes under us.
+          VERSION: "tags/v0.1.4"
           MATCH: "arxivfeed-.+-x86_64-unknown-linux-musl.tar.gz$"
           RENAME: "arxivfeed.tgz"
         shell: bash
@@ -42,8 +43,18 @@ jobs:
               "$(cat asset.url)"
           tar -zxvf arxivfeed.tgz --strip-components 1 $(tar tf arxivfeed.tgz | grep /arxivfeed)
           chmod +x arxivfeed
+      # The arXiv API answers with plain text ("Rate exceeded.") or an HTML error
+      # page instead of Atom XML when it throttles us, and arxivfeed feeds
+      # whatever it gets straight into an XML parser. Retry with backoff.
       - name: Build rss
-        run: ./arxivfeed
+        run: |
+          for i in 1 2 3 4 5; do
+            if ./arxivfeed; then exit 0; fi
+            echo "attempt ${i} failed; retrying in 30s"
+            sleep 30
+          done
+          echo "arxivfeed failed after 5 attempts"
+          exit 1
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
